@@ -236,30 +236,3 @@ This describes the structure of each item in the `"clinical_events"` list produc
   "unit_display": "string or null (Human-readable unit for value_numeric)",
   "age_at_event": "integer or null (Patient's age in years at the time of the event)"
 }
-
-I. Graph Structure Visual (Moved to End)
-graph TD
-    subgraph Patient Record
-        P(Patient)
-    end
-
-    subgraph "Year t Snapshots (Chronological)"
-        direction LR
-        P -->|HAS_SNAPSHOT (ordered)| AS1(AnnualSnapshot Year 1)
-        P -->|HAS_SNAPSHOT (ordered)| AS2(AnnualSnapshot Year 2)
-        P -->|HAS_SNAPSHOT (ordered)| AS_N(AnnualSnapshot Year N)
-    end
-
-    subgraph "Clinical Events within AnnualSnapshot 1"
-        direction TB
-        AS1 -->|CONTAINS_EVENT| C11(Condition)
-        AS1 -->|CONTAINS_EVENT| O11(Observation)
-        AS1 -->|CONTAINS_EVENT| M11(MedicationRequest)
-        AS1 -->|CONTAINS_EVENT| PR11(Procedure)
-        AS1 -->|CONTAINS_EVENT| I11(Immunization)
-        AS1 -->|CONTAINS_EVENT| DR11(DiagnosticReport)
-    end
-
-    subgraph "Clinical Events within AnnualSnapshot 2"
-        direction TB
-        AS2 -->|CONTAINS_EVENT|
