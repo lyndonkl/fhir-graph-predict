@@ -1,46 +1,72 @@
-# Medical Code Embedding Generation
+# Medical Code Extraction
 
-This directory contains scripts for generating embeddings for medical codes (SNOMED, LOINC, RxNorm, CVX, etc.) found in the EHR data.
+This directory contains scripts for extracting and organizing medical codes found in the EHR data.
 
-## Generate Code Embeddings
+## Extract Unique Codes
 
-The `generate_code_embeddings.py` script uses BioBERT to create meaningful embeddings for medical codes that can be used in the GNN model. It processes all patient data files to extract unique codes and generates embeddings based on code descriptions.
+The `extract_unique_codes.py` script extracts and organizes the unique codes from the patient data files, and tracks their usage by resource type. This provides a comprehensive view of how different codes are used across the dataset.
 
 ### Usage
 
 ```bash
 # Basic usage with default settings
-python scripts/embedding_generation/generate_code_embeddings.py
+python scripts/embedding_generation/extract_unique_codes.py
 
 # With custom settings
-python scripts/embedding_generation/generate_code_embeddings.py \
+python scripts/embedding_generation/extract_unique_codes.py \
   --data_dir data/processed_ehr_data \
-  --output_dir embeddings \
-  --model_name dmis-lab/biobert-base-cased-v1.1 \
-  --batch_size 32
+  --output_dir data/codes
 ```
 
 ### Dependencies
 
-Before running the script, make sure to install the required packages:
+Before running the script, make sure to install the required package:
 
 ```bash
-pip install torch transformers tqdm numpy
+pip install tqdm
 ```
 
 ### Output
 
-The script creates a structured directory for embeddings:
+The script generates multiple types of CSV files in the output directory:
 
 ```
-embeddings/
-  ├── snomed/
-  │   └── embeddings.pkl, embeddings.npz
-  ├── loinc/
-  │   └── embeddings.pkl, embeddings.npz
-  ├── rxnorm/
-  │   └── embeddings.pkl, embeddings.npz
-  └── ... (other code systems)
+data/codes/
+  ├── snomed.csv                 # List of unique SNOMED codes
+  ├── snomed_usage.csv           # Detailed usage of SNOMED codes by resource type
+  ├── loinc.csv                  # List of unique LOINC codes
+  ├── loinc_usage.csv            # Detailed usage of LOINC codes by resource type
+  ├── ...                        # Other code systems
+  ├── code_summary.csv           # Summary of all code systems with counts
+  └── usage_summary.csv          # Detailed usage statistics by code system and resource type
 ```
 
-Each embedding is generated based on the description of the medical code, which provides much richer semantic information than the code alone. 
+#### Main code files (e.g., `snomed.csv`):
+- `system`: The original system identifier
+- `code`: The unique code value
+
+#### Usage files (e.g., `snomed_usage.csv`):
+- `system`: The original system identifier
+- `code`: The code value
+- `resource_type`: The FHIR resource type where this code appears (Condition, Observation, etc.)
+- `count`: The number of occurrences of this code in this resource type
+
+#### Summary files:
+- `code_summary.csv`: Lists each code system, the count of unique codes, and the resource types where it appears
+- `usage_summary.csv`: Provides detailed statistics on code usage by system and resource type
+
+### Implementation Notes
+
+1. **No Hard-Coded Identifiers**: The script avoids hard-coding system identifiers, instead using information directly from the data.
+
+2. **Consistent Field Names**: When a system identifier isn't available (e.g., for interpretation codes), the script uses the field name in a consistent way.
+
+3. **Usage Tracking**: The script tracks every occurrence of each code, organized by resource type, providing valuable context for embedding generation.
+
+### Planned Next Steps
+
+After collecting and organizing the codes, we plan to:
+
+1. Analyze the usage statistics to understand code distribution across resource types
+2. For medical code systems (SNOMED, LOINC, RxNorm, etc.), fetch official descriptions where possible
+3. Generate embeddings using biomedical NLP models like BioBERT, potentially tailoring them by resource type 
