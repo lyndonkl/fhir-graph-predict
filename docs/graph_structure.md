@@ -29,22 +29,24 @@ graph TD
 
     subgraph "Clinical Events within AnnualSnapshot 2"
         direction TB
-        AS2 -- "CONTAINS_EVENT" --> C11(Condition)
-        AS2 -- "CONTAINS_EVENT" --> O11(Observation)
-        AS2 -- "CONTAINS_EVENT" --> M11(MedicationRequest)
-        AS2 -- "CONTAINS_EVENT" --> PR11(Procedure)
-        AS2 -- "CONTAINS_EVENT" --> I11(Immunization)
-        AS2 -- "CONTAINS_EVENT" --> DR11(DiagnosticReport)
+        AS2 -- "CONTAINS_EVENT" --> C21(Condition)
+        AS2 -- "CONTAINS_EVENT" --> O21(Observation)
+        AS2 -- "CONTAINS_EVENT" --> M21(MedicationRequest)
+        AS2 -- "CONTAINS_EVENT" --> PR21(Procedure)
+        AS2 -- "CONTAINS_EVENT" --> I21(Immunization)
+        AS2 -- "CONTAINS_EVENT" --> DR21(DiagnosticReport)
+        %% ... other event types for AS2 can use similar unique IDs like C22, O22 etc.
     end
 
     subgraph "Clinical Events within AnnualSnapshot N"
         direction TB
-        AS_N -- "CONTAINS_EVENT" --> C11(Condition)
-        AS_N -- "CONTAINS_EVENT" --> O11(Observation)
-        AS_N -- "CONTAINS_EVENT" --> M11(MedicationRequest)
-        AS_N -- "CONTAINS_EVENT" --> PR11(Procedure)
-        AS_N -- "CONTAINS_EVENT" --> I11(Immunization)
-        AS_N -- "CONTAINS_EVENT" --> DR11(DiagnosticReport)
+        AS_N -- "CONTAINS_EVENT" --> CN1(Condition)
+        AS_N -- "CONTAINS_EVENT" --> ON1(Observation)
+        AS_N -- "CONTAINS_EVENT" --> MN1(MedicationRequest)
+        AS_N -- "CONTAINS_EVENT" --> PRN1(Procedure)
+        AS_N -- "CONTAINS_EVENT" --> IN1(Immunization)
+        AS_N -- "CONTAINS_EVENT" --> DRN1(DiagnosticReport)
+        %% ... other event types for AS_N can use similar unique IDs like CN2, ON2 etc.
     end
 ```
 
