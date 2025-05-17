@@ -4,7 +4,8 @@
 """
 Extract and organize unique medical codes from EHR data.
 This script processes all patient data files to extract unique codes by system,
-tracks code usage by resource type, and saves the results to the data/codes/ directory.
+tracks code usage by resource type and source field (when system is obtained dynamically),
+and saves the results to the data/codes/ directory.
 """
 
 import os
@@ -13,7 +14,7 @@ import logging
 import argparse
 import csv
 from pathlib import Path
-from typing import Dict, List, Set, Tuple, Counter, DefaultDict
+from typing import Dict, List, Set, Tuple, Counter, DefaultDict, NamedTuple, Optional
 from collections import defaultdict, Counter
 from tqdm import tqdm
 
@@ -24,9 +25,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def collect_unique_codes(data_dir: str) -> Tuple[Dict[str, Set[str]], Dict[str, Dict[str, Counter]]]:
+# Define a namedtuple to track source field for each code
+class CodeSource(NamedTuple):
+    resource_type: str
+    source_field: Optional[str] = None  # Optional as we'll only track source for dynamic systems
+
+def collect_unique_codes(data_dir: str) -> Tuple[Dict[str, Set[str]], Dict[str, Dict[CodeSource, Counter]]]:
     """
-    Scan through all data files to collect unique codes by system and track usage by resource type
+    Scan through all data files to collect unique codes by system and track usage by resource type and source field
     
     Args:
         data_dir: Directory containing processed EHR data files
@@ -34,10 +40,11 @@ def collect_unique_codes(data_dir: str) -> Tuple[Dict[str, Set[str]], Dict[str, 
     Returns:
         Tuple containing:
         - Dictionary mapping code systems to sets of unique codes
-        - Dictionary mapping code systems to resource type usage counts
+        - Dictionary mapping code systems to usage counts by resource type and source field
     """
     unique_codes = defaultdict(set)
-    # Track resource types where each code system appears
+    # Track resource types and source fields where each code system appears
+    # Structure: code_usage[system][CodeSource(resource_type, source_field)][code] = count
     code_usage = defaultdict(lambda: defaultdict(Counter))
     file_count = 0
     
@@ -59,76 +66,99 @@ def collect_unique_codes(data_dir: str) -> Tuple[Dict[str, Set[str]], Dict[str, 
                     
                     # Process primary codes (e.g., SNOMED, LOINC)
                     for code_entry in event.get("codes", []):
-                        system = code_entry.get("system")
+                        system = code_entry.get("system")  # System is obtained dynamically
                         code = code_entry.get("code")
                         if system and code:
                             unique_codes[system].add(code)
-                            code_usage[system][resource_type][code] += 1
+                            # Track source field since system is obtained dynamically
+                            source = CodeSource(resource_type, "codes")
+                            code_usage[system][source][code] += 1
                     
                     # Process status codes
                     for status_entry in event.get("status_codes", []):
-                        system = status_entry.get("system")
+                        system = status_entry.get("system")  # System is obtained dynamically
                         code = status_entry.get("code")
                         if system and code:
                             unique_codes[system].add(code)
-                            code_usage[system][resource_type][code] += 1
+                            # Track source field since system is obtained dynamically
+                            source = CodeSource(resource_type, "status_codes")
+                            code_usage[system][source][code] += 1
                     
                     # Process intent codes
                     for intent_entry in event.get("intent_codes", []):
-                        system = intent_entry.get("system")
+                        system = intent_entry.get("system")  # System is obtained dynamically
                         code = intent_entry.get("code")
                         if system and code:
                             unique_codes[system].add(code)
-                            code_usage[system][resource_type][code] += 1
+                            # Track source field since system is obtained dynamically
+                            source = CodeSource(resource_type, "intent_codes")
+                            code_usage[system][source][code] += 1
                     
                     # Process interpretation codes
                     for interp_code in event.get("interpretation_codes", []):
                         if isinstance(interp_code, str):
-                            # If it's a direct string without system, treat it as an interpretation code
-                            system = "interpretation_code"  # Generic system name instead of hardcoded URL
+                            # If it's a direct string without system, use generic name
+                            system = "interpretation_code"  # Hard-coded system name
                             unique_codes[system].add(interp_code)
-                            code_usage[system][resource_type][interp_code] += 1
+                            # Don't track source field for hard-coded system
+                            source = CodeSource(resource_type)
+                            code_usage[system][source][interp_code] += 1
                         elif isinstance(interp_code, dict) and interp_code.get("system") and interp_code.get("code"):
                             # If it's a system/code pair
-                            system = interp_code.get("system")
+                            system = interp_code.get("system")  # System is obtained dynamically
                             code = interp_code.get("code")
                             unique_codes[system].add(code)
-                            code_usage[system][resource_type][code] += 1
+                            # Track source field since system is obtained dynamically
+                            source = CodeSource(resource_type, "interpretation_codes")
+                            code_usage[system][source][code] += 1
                     
                     # Process value_codeable_concept_code if present
                     if event.get("value_codeable_concept_code"):
                         code = event.get("value_codeable_concept_code")
-                        # If we don't know the system, use the field name
+                        # Hard-coded system name
                         system = "value_codeable_concept"
                         unique_codes[system].add(code)
-                        code_usage[system][resource_type][code] += 1
+                        # Don't track source field for hard-coded system name
+                        source = CodeSource(resource_type)
+                        code_usage[system][source][code] += 1
                     
                     # Process unit_code if present
                     if event.get("unit_code"):
                         code = event.get("unit_code")
-                        # If we don't know the system, use the field name
+                        # Hard-coded system name
                         system = "unit_code"
                         unique_codes[system].add(code)
-                        code_usage[system][resource_type][code] += 1
+                        # Don't track source field for hard-coded system name
+                        source = CodeSource(resource_type)
+                        code_usage[system][source][code] += 1
                 
                 # Process patient demographics (race and ethnicity codes)
                 demographics = patient_data.get("demographics", {})
                 for race_code in demographics.get("race_codes", []):
+                    # Hard-coded system name
                     system = "race_code"
                     unique_codes[system].add(race_code)
-                    code_usage[system]["Patient"][race_code] += 1
+                    # Don't track source field for hard-coded system
+                    source = CodeSource("Patient")
+                    code_usage[system][source][race_code] += 1
                     
                 for ethnicity_code in demographics.get("ethnicity_codes", []):
+                    # Hard-coded system name
                     system = "ethnicity_code"
                     unique_codes[system].add(ethnicity_code)
-                    code_usage[system]["Patient"][ethnicity_code] += 1
+                    # Don't track source field for hard-coded system
+                    source = CodeSource("Patient")
+                    code_usage[system][source][ethnicity_code] += 1
                 
                 # Process gender
                 gender = demographics.get("gender")
                 if gender:
+                    # Hard-coded system name
                     system = "gender"
                     unique_codes[system].add(gender)
-                    code_usage[system]["Patient"][gender] += 1
+                    # Don't track source field for hard-coded system
+                    source = CodeSource("Patient")
+                    code_usage[system][source][gender] += 1
                     
             except json.JSONDecodeError:
                 logger.error(f"Error decoding JSON from {file_path}")
@@ -154,14 +184,14 @@ def get_safe_filename(system: str) -> str:
     # Replace characters that are problematic in filenames
     return system.replace("/", "_").replace(":", "_").replace(".", "_").replace(" ", "_").lower()
 
-def save_unique_codes(unique_codes: Dict[str, Set[str]], code_usage: Dict[str, Dict[str, Counter]], output_dir: str) -> None:
+def save_unique_codes(unique_codes: Dict[str, Set[str]], code_usage: Dict[str, Dict[CodeSource, Counter]], output_dir: str) -> None:
     """
     Save unique codes to CSV files, one file per code system.
-    Also save code usage statistics.
+    Also save code usage statistics including source field information.
     
     Args:
         unique_codes: Dictionary mapping code systems to sets of unique codes
-        code_usage: Dictionary tracking code usage by resource type
+        code_usage: Dictionary tracking code usage by resource type and source field
         output_dir: Directory to save the code files
     """
     # Create output directory if it doesn't exist
@@ -190,13 +220,23 @@ def save_unique_codes(unique_codes: Dict[str, Set[str]], code_usage: Dict[str, D
             usage_file = os.path.join(output_dir, f"{safe_system_name}_usage.csv")
             with open(usage_file, 'w', newline='') as csvfile:
                 writer = csv.writer(csvfile)
-                writer.writerow(["system", "code", "resource_type", "count"])
                 
-                # For each resource type where this code system appears
-                for resource_type, code_counts in code_usage[system].items():
-                    # For each code and its count in this resource type
+                # Check if any source in this system has a source_field
+                has_source_fields = any(source.source_field for source in code_usage[system].keys())
+                
+                if has_source_fields:
+                    writer.writerow(["system", "code", "resource_type", "source_field", "count"])
+                else:
+                    writer.writerow(["system", "code", "resource_type", "count"])
+                
+                # For each code source where this code system appears
+                for source, code_counts in code_usage[system].items():
+                    # For each code and its count in this source
                     for code, count in code_counts.items():
-                        writer.writerow([system, code, resource_type, count])
+                        if has_source_fields:
+                            writer.writerow([system, code, source.resource_type, source.source_field, count])
+                        else:
+                            writer.writerow([system, code, source.resource_type, count])
             
             logger.info(f"Saved usage statistics to {usage_file}")
     
@@ -204,11 +244,17 @@ def save_unique_codes(unique_codes: Dict[str, Set[str]], code_usage: Dict[str, D
     summary_file = os.path.join(output_dir, "code_summary.csv")
     with open(summary_file, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(["system", "code_count", "resource_types"])
+        writer.writerow(["system", "code_count", "resource_types", "source_fields"])
         for system, codes in unique_codes.items():
-            # Get the resource types where this code system appears
-            resource_types = list(code_usage[system].keys()) if system in code_usage else []
-            writer.writerow([system, len(codes), "|".join(resource_types)])
+            # Get the resource types and source fields where this code system appears
+            sources = code_usage.get(system, {}).keys()
+            resource_types = sorted(set(source.resource_type for source in sources))
+            
+            # Get unique source fields, if any
+            source_fields = sorted(set(source.source_field for source in sources if source.source_field))
+            source_field_str = "|".join(source_fields) if source_fields else "N/A"
+                
+            writer.writerow([system, len(codes), "|".join(resource_types), source_field_str])
     
     logger.info(f"Saved summary to {summary_file}")
     
@@ -216,13 +262,15 @@ def save_unique_codes(unique_codes: Dict[str, Set[str]], code_usage: Dict[str, D
     usage_summary_file = os.path.join(output_dir, "usage_summary.csv")
     with open(usage_summary_file, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(["system", "resource_type", "unique_codes", "total_occurrences"])
+        writer.writerow(["system", "resource_type", "source_field", "unique_codes", "total_occurrences"])
         
-        for system, resource_types in code_usage.items():
-            for resource_type, code_counts in resource_types.items():
+        for system, sources in code_usage.items():
+            for source, code_counts in sources.items():
+                resource_type = source.resource_type
+                source_field = source.source_field if source.source_field else "N/A"
                 unique_count = len(code_counts)
                 total_occurrences = sum(code_counts.values())
-                writer.writerow([system, resource_type, unique_count, total_occurrences])
+                writer.writerow([system, resource_type, source_field, unique_count, total_occurrences])
     
     logger.info(f"Saved usage summary to {usage_summary_file}")
 
