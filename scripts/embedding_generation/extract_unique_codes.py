@@ -203,17 +203,14 @@ def save_unique_codes(unique_codes: Dict[str, Set[str]], code_usage: Dict[str, D
         safe_system_name = get_safe_filename(system)
         output_file = os.path.join(output_dir, f"{safe_system_name}.csv")
         
-        # Sort codes for consistent output
-        sorted_codes = sorted(codes)
-        
-        # Save codes to CSV
+        # Save codes to CSV without unnecessary sorting
         with open(output_file, 'w', newline='') as csvfile:
             writer = csv.writer(csvfile)
             writer.writerow(["system", "code"])
-            for code in sorted_codes:
+            for code in codes:
                 writer.writerow([system, code])
         
-        logger.info(f"Saved {len(sorted_codes)} codes to {output_file}")
+        logger.info(f"Saved {len(codes)} codes to {output_file}")
         
         # Save detailed usage for this code system
         if system in code_usage:
@@ -244,17 +241,30 @@ def save_unique_codes(unique_codes: Dict[str, Set[str]], code_usage: Dict[str, D
     summary_file = os.path.join(output_dir, "code_summary.csv")
     with open(summary_file, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
-        writer.writerow(["system", "code_count", "resource_types", "source_fields"])
+        writer.writerow(["system", "code_count", "resource_types_with_sources"])
         for system, codes in unique_codes.items():
             # Get the resource types and source fields where this code system appears
             sources = code_usage.get(system, {}).keys()
-            resource_types = sorted(set(source.resource_type for source in sources))
             
-            # Get unique source fields, if any
-            source_fields = sorted(set(source.source_field for source in sources if source.source_field))
-            source_field_str = "|".join(source_fields) if source_fields else "N/A"
+            # Create mapping of resource_type -> set of source_fields (add all resource types)
+            resource_to_sources = defaultdict(set)
+            for source in sources:
+                # Always add the resource type to the dictionary, whether it has a source field or not
+                if source.source_field:
+                    resource_to_sources[source.resource_type].add(source.source_field)
+                else:
+                    # Add resource type with empty set of source fields
+                    resource_to_sources[source.resource_type]
+            
+            # Format as ResourceType(source1,source2)|ResourceType2(source3)
+            formatted_resources = []
+            for resource_type, source_fields in resource_to_sources.items():
+                if source_fields:  # If there are source fields, include them in parentheses
+                    formatted_resources.append(f"{resource_type}({','.join(source_fields)})")
+                else:  # If no source fields, just add the resource type
+                    formatted_resources.append(resource_type)
                 
-            writer.writerow([system, len(codes), "|".join(resource_types), source_field_str])
+            writer.writerow([system, len(codes), "|".join(formatted_resources)])
     
     logger.info(f"Saved summary to {summary_file}")
     
