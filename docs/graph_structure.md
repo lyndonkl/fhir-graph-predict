@@ -29,10 +29,22 @@ graph TD
 
     subgraph "Clinical Events within AnnualSnapshot 2"
         direction TB
-        AS2 -- "CONTAINS_EVENT" --> C21(Condition)
-        AS2 -- "CONTAINS_EVENT" --> O21(Observation)
-        %% ... other event types for AS2
+        AS2 -- "CONTAINS_EVENT" --> C11(Condition)
+        AS2 -- "CONTAINS_EVENT" --> O11(Observation)
+        AS2 -- "CONTAINS_EVENT" --> M11(MedicationRequest)
+        AS2 -- "CONTAINS_EVENT" --> PR11(Procedure)
+        AS2 -- "CONTAINS_EVENT" --> I11(Immunization)
+        AS2 -- "CONTAINS_EVENT" --> DR11(DiagnosticReport)
     end
+
+    subgraph "Clinical Events within AnnualSnapshot N"
+        direction TB
+        AS_N -- "CONTAINS_EVENT" --> C11(Condition)
+        AS_N -- "CONTAINS_EVENT" --> O11(Observation)
+        AS_N -- "CONTAINS_EVENT" --> M11(MedicationRequest)
+        AS_N -- "CONTAINS_EVENT" --> PR11(Procedure)
+        AS_N -- "CONTAINS_EVENT" --> I11(Immunization)
+        AS_N -- "CONTAINS_EVENT" --> DR11(DiagnosticReport)
 ```
 
 ## II. Node Types and Their Model Features (Vectorized)
