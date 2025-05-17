@@ -12,25 +12,25 @@ graph TD
 
     subgraph "Year t Snapshots (Chronological)"
         direction LR
-        P -->|HAS_SNAPSHOT (ordered)| AS1(AnnualSnapshot Year 1)
-        P -->|HAS_SNAPSHOT (ordered)| AS2(AnnualSnapshot Year 2)
-        P -->|HAS_SNAPSHOT (ordered)| AS_N(AnnualSnapshot Year N)
+        P -- "HAS_SNAPSHOT (ordered)" --> AS1(AnnualSnapshot Year 1)
+        P -- "HAS_SNAPSHOT (ordered)" --> AS2(AnnualSnapshot Year 2)
+        P -- "HAS_SNAPSHOT (ordered)" --> AS_N(AnnualSnapshot Year N)
     end
 
     subgraph "Clinical Events within AnnualSnapshot 1"
         direction TB
-        AS1 -->|CONTAINS_EVENT| C11(Condition)
-        AS1 -->|CONTAINS_EVENT| O11(Observation)
-        AS1 -->|CONTAINS_EVENT| M11(MedicationRequest)
-        AS1 -->|CONTAINS_EVENT| PR11(Procedure)
-        AS1 -->|CONTAINS_EVENT| I11(Immunization)
-        AS1 -->|CONTAINS_EVENT| DR11(DiagnosticReport)
+        AS1 -- "CONTAINS_EVENT" --> C11(Condition)
+        AS1 -- "CONTAINS_EVENT" --> O11(Observation)
+        AS1 -- "CONTAINS_EVENT" --> M11(MedicationRequest)
+        AS1 -- "CONTAINS_EVENT" --> PR11(Procedure)
+        AS1 -- "CONTAINS_EVENT" --> I11(Immunization)
+        AS1 -- "CONTAINS_EVENT" --> DR11(DiagnosticReport)
     end
 
     subgraph "Clinical Events within AnnualSnapshot 2"
         direction TB
-        AS2 -->|CONTAINS_EVENT| C21(Condition)
-        AS2 -->|CONTAINS_EVENT| O21(Observation)
+        AS2 -- "CONTAINS_EVENT" --> C21(Condition)
+        AS2 -- "CONTAINS_EVENT" --> O21(Observation)
         %% ... other event types for AS2
     end
 ```
