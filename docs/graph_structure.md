@@ -45,6 +45,7 @@ graph TD
         AS_N -- "CONTAINS_EVENT" --> PR11(Procedure)
         AS_N -- "CONTAINS_EVENT" --> I11(Immunization)
         AS_N -- "CONTAINS_EVENT" --> DR11(DiagnosticReport)
+    end
 ```
 
 ## II. Node Types and Their Model Features (Vectorized)
