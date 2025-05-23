@@ -65,62 +65,56 @@ def collect_unique_codes(data_dir: str) -> Tuple[Dict[str, Set[str]], Dict[str, 
                     resource_type = event.get("resourceType", "Unknown")
                     
                     # Process primary codes (e.g., SNOMED, LOINC)
-                    for code_entry in event.get("codes", []):
+                    for code_entry in event.get("primary_codings", []):
                         system = code_entry.get("system")  # System is obtained dynamically
                         code = code_entry.get("code")
                         if system and code:
                             unique_codes[system].add(code)
                             # Track source field since system is obtained dynamically
-                            source = CodeSource(resource_type, "codes")
+                            source = CodeSource(resource_type, "primary_codings")
                             code_usage[system][source][code] += 1
                     
                     # Process status codes
-                    for status_entry in event.get("status_codes", []):
+                    for status_entry in event.get("status_codings", []):
                         system = status_entry.get("system")  # System is obtained dynamically
                         code = status_entry.get("code")
                         if system and code:
                             unique_codes[system].add(code)
                             # Track source field since system is obtained dynamically
-                            source = CodeSource(resource_type, "status_codes")
+                            source = CodeSource(resource_type, "status_codings")
                             code_usage[system][source][code] += 1
                     
                     # Process intent codes
-                    for intent_entry in event.get("intent_codes", []):
+                    for intent_entry in event.get("intent_codings", []):
                         system = intent_entry.get("system")  # System is obtained dynamically
                         code = intent_entry.get("code")
                         if system and code:
                             unique_codes[system].add(code)
                             # Track source field since system is obtained dynamically
-                            source = CodeSource(resource_type, "intent_codes")
+                            source = CodeSource(resource_type, "intent_codings")
                             code_usage[system][source][code] += 1
                     
                     # Process interpretation codes
-                    for interp_code in event.get("interpretation_codes", []):
-                        if isinstance(interp_code, str):
-                            # If it's a direct string without system, use generic name
-                            system = "interpretation_code"  # Hard-coded system name
-                            unique_codes[system].add(interp_code)
-                            # Don't track source field for hard-coded system
-                            source = CodeSource(resource_type)
-                            code_usage[system][source][interp_code] += 1
-                        elif isinstance(interp_code, dict) and interp_code.get("system") and interp_code.get("code"):
-                            # If it's a system/code pair
-                            system = interp_code.get("system")  # System is obtained dynamically
-                            code = interp_code.get("code")
+                    for interp_entry in event.get("interpretation_codings", []):
+                        # Each interp_entry is now a dict with 'system' and 'code' keys
+                        if isinstance(interp_entry, dict) and interp_entry.get("system") and interp_entry.get("code"):
+                            system = interp_entry.get("system") 
+                            code = interp_entry.get("code")
                             unique_codes[system].add(code)
-                            # Track source field since system is obtained dynamically
-                            source = CodeSource(resource_type, "interpretation_codes")
+                            # System is now dynamically obtained from interp_entry
+                            source = CodeSource(resource_type, "interpretation_codings") 
                             code_usage[system][source][code] += 1
                     
-                    # Process value_codeable_concept_code if present
-                    if event.get("value_codeable_concept_code"):
-                        code = event.get("value_codeable_concept_code")
-                        # Hard-coded system name
-                        system = "value_codeable_concept"
-                        unique_codes[system].add(code)
-                        # Don't track source field for hard-coded system name
-                        source = CodeSource(resource_type)
-                        code_usage[system][source][code] += 1
+                    # Process value_concept_codings (plural)
+                    for value_entry in event.get("value_concept_codings", []): # Iterate over the list
+                        # Each value_entry is now a dict with 'system' and 'code' keys
+                        if isinstance(value_entry, dict) and value_entry.get("system") and value_entry.get("code"):
+                            system = value_entry.get("system")
+                            code = value_entry.get("code")
+                            unique_codes[system].add(code)
+                            # System is now dynamically obtained from value_entry
+                            source = CodeSource(resource_type, "value_concept_codings")
+                            code_usage[system][source][code] += 1
                     
                     # Process unit_code if present
                     if event.get("unit_code"):
@@ -134,21 +128,25 @@ def collect_unique_codes(data_dir: str) -> Tuple[Dict[str, Set[str]], Dict[str, 
                 
                 # Process patient demographics (race and ethnicity codes)
                 demographics = patient_data.get("demographics", {})
-                for race_code in demographics.get("race_codes", []):
-                    # Hard-coded system name
-                    system = "race_code"
-                    unique_codes[system].add(race_code)
-                    # Don't track source field for hard-coded system
-                    source = CodeSource("Patient")
-                    code_usage[system][source][race_code] += 1
+                for race_entry in demographics.get("race_codings", []):
+                    if isinstance(race_entry, dict) and race_entry.get("code"):
+                        race_code = race_entry.get("code")
+                        # Hard-coded system name
+                        system = "race_code"
+                        unique_codes[system].add(race_code)
+                        # Don't track source field for hard-coded system
+                        source = CodeSource("Patient")
+                        code_usage[system][source][race_code] += 1
                     
-                for ethnicity_code in demographics.get("ethnicity_codes", []):
-                    # Hard-coded system name
-                    system = "ethnicity_code"
-                    unique_codes[system].add(ethnicity_code)
-                    # Don't track source field for hard-coded system
-                    source = CodeSource("Patient")
-                    code_usage[system][source][ethnicity_code] += 1
+                for ethnicity_entry in demographics.get("ethnicity_codings", []):
+                    if isinstance(ethnicity_entry, dict) and ethnicity_entry.get("code"):
+                        ethnicity_code = ethnicity_entry.get("code")
+                        # Hard-coded system name
+                        system = "ethnicity_code"
+                        unique_codes[system].add(ethnicity_code)
+                        # Don't track source field for hard-coded system
+                        source = CodeSource("Patient")
+                        code_usage[system][source][ethnicity_code] += 1
                 
                 # Process gender
                 gender = demographics.get("gender")

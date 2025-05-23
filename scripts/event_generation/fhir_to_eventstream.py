@@ -26,64 +26,101 @@ CODING_SYSTEMS = {
 US_CORE_RACE_URL = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-race"
 US_CORE_ETHNICITY_URL = "http://hl7.org/fhir/us/core/StructureDefinition/us-core-ethnicity"
 
-def get_first_coding_with_system(codeable_concept, target_system_url_or_prefix):
-    """Helper to extract the first code from a specific system in a CodeableConcept."""
+def get_all_codings_from_concept(codeable_concept, target_system_url_or_prefixes: list):
+    """Helper to extract all codes and their displays from a specific system (or list of systems) in a CodeableConcept."""
     if not codeable_concept or not isinstance(codeable_concept, dict) or 'coding' not in codeable_concept:
-        return None
-    for coding in codeable_concept.get('coding', []):
-        if coding and isinstance(coding, dict) and 'system' in coding and 'code' in coding:
-            if isinstance(target_system_url_or_prefix, list): # If multiple system aliases
-                 for prefix in target_system_url_or_prefix:
-                    if coding['system'].startswith(prefix):
-                        return coding['code']
-            elif coding['system'].startswith(target_system_url_or_prefix): # if single system alias
-                return coding['code']
-    return None # Or return all codings if specific system not found / prefer more generic one
+        return [] # Return empty list if no valid concept
+    
+    extracted_codings = []
+    for coding_entry in codeable_concept.get('coding', []):
+        if coding_entry and isinstance(coding_entry, dict) and 'system' in coding_entry and 'code' in coding_entry:
+            # Check if the coding_entry's system matches any of the target_system_url_or_prefixes
+            system_matched = False
+            for target_system in target_system_url_or_prefixes:
+                if coding_entry['system'].startswith(target_system):
+                    system_matched = True
+                    break
+            
+            if system_matched:
+                extracted_codings.append({
+                    "system": coding_entry['system'], # Store the actual system from the coding
+                    "code": coding_entry['code'],
+                    "display": coding_entry.get('display')
+                })
+    return extracted_codings
 
 def get_value_from_observation(observation_resource):
-    """Extracts value and unit from an Observation resource."""
+    """Extracts value and unit from an Observation resource. Value can be a list of codings."""
     value_numeric = None
-    value_code = None
+    value_concept_codings = [] # Will store a list of {"system":..., "code": ..., "display": ...}
     unit_code = None
-    unit_display = None
+    unit_display = None # This is the display name for the unit, not the UCUM code's display
 
     if 'valueQuantity' in observation_resource:
         value_numeric = observation_resource['valueQuantity'].get('value')
-        unit_display = observation_resource['valueQuantity'].get('unit')
-        unit_code = observation_resource['valueQuantity'].get('code') # UCUM code
+        unit_display = observation_resource['valueQuantity'].get('unit') # e.g., "mg/dL"
+        unit_code = observation_resource['valueQuantity'].get('code') # UCUM code, e.g., "mg/dL"
+        # We don't typically get a separate "display" for the UCUM code itself from valueQuantity's code.
 
     elif 'valueCodeableConcept' in observation_resource:
-        # For now, we'll prioritize SNOMED or LOINC for coded values if available,
-        # otherwise, take the first available code.
-        value_code = get_first_coding_with_system(observation_resource['valueCodeableConcept'],
-                                                [CODING_SYSTEMS["SNOMED"], CODING_SYSTEMS["LOINC"]])
-        if not value_code and observation_resource['valueCodeableConcept'].get('coding'):
-             value_code = observation_resource['valueCodeableConcept']['coding'][0].get('code')
-
+        # Prioritize SNOMED or LOINC for coded values
+        value_concept_codings = get_all_codings_from_concept(
+            observation_resource['valueCodeableConcept'],
+            [CODING_SYSTEMS["SNOMED"], CODING_SYSTEMS["LOINC"]]
+        )
+        # Fallback to the first coding if no SNOMED/LOINC and codings exist
+        if not value_concept_codings and observation_resource['valueCodeableConcept'].get('coding'):
+            first_coding = observation_resource['valueCodeableConcept']['coding'][0]
+            if first_coding and 'code' in first_coding: # Ensure basic structure
+                value_concept_codings.append({
+                    "system": first_coding.get('system', 'unknown_system'), # Add system if available
+                    "code": first_coding.get('code'),
+                    "display": first_coding.get('display')
+                })
+        # If text is available and no coding was processed, treat text as a code
+        if not value_concept_codings and observation_resource['valueCodeableConcept'].get('text'):
+             text_val = observation_resource['valueCodeableConcept'].get('text')
+             value_concept_codings.append({"system": "text_value", "code": text_val, "display": text_val})
 
     elif 'valueString' in observation_resource:
-        value_code = observation_resource.get('valueString') # Treat as a code/category for simplicity
+        # Treat as a code/category for simplicity, display can be the same
+        val_str = observation_resource.get('valueString')
+        value_concept_codings.append({"system": "string_value", "code": val_str, "display": val_str})
     elif 'valueBoolean' in observation_resource:
-        value_code = str(observation_resource.get('valueBoolean'))
+        val_bool = str(observation_resource.get('valueBoolean'))
+        value_concept_codings.append({"system": "boolean_value", "code": val_bool, "display": val_bool})
     # Add other value[x] types if necessary (e.g., valueDateTime, valuePeriod)
 
     return {
         "value_numeric": value_numeric,
-        "value_codeable_concept_code": value_code, # This can be a direct code or a string
-        "unit_code": unit_code, # UCUM
-        "unit_display": unit_display
+        "value_concept_codings": value_concept_codings, # Note: pluralized
+        "unit_code": unit_code, # UCUM code for the unit
+        "unit_display": unit_display # Human-readable unit from valueQuantity.unit
     }
 
-def get_interpretation_code(observation_resource):
-    """Extracts interpretation code from an Observation resource."""
+def get_interpretation_codings(observation_resource): # Renamed to reflect list return
+    """Extracts interpretation codes and displays from an Observation resource."""
     if 'interpretation' in observation_resource and observation_resource['interpretation']:
-        # Typically, interpretation is a list, but we'll take the first one for simplicity
-        interpretation_concept = observation_resource['interpretation'][0]
-        # Prioritize a standard system if available, otherwise take text or first code
-        # Example systems for interpretation: http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation
-        return get_first_coding_with_system(interpretation_concept, "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation") or \
-               interpretation_concept.get('text')
-    return None
+        interpretation_concept_list = observation_resource['interpretation'] # interpretation is a list of CodeableConcepts
+        
+        all_interp_codings = []
+        for interpretation_concept in interpretation_concept_list:
+            # Try to get structured codes from the standard system for each concept
+            codings = get_all_codings_from_concept(
+                interpretation_concept,
+                ["http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation"] # Pass as list
+            )
+            if codings:
+                all_interp_codings.extend(codings)
+            # Fallback to text if no structured code found for this specific interpretation_concept
+            elif interpretation_concept.get('text'):
+                text = interpretation_concept.get('text')
+                all_interp_codings.append({"system": "text_interpretation", "code": text, "display": text})
+        
+        if all_interp_codings:
+            return all_interp_codings
+            
+    return [] # Return empty list if no interpretations
 
 
 def get_event_timestamp(resource):
@@ -130,31 +167,38 @@ def extract_patient_demographics(patient_bundle):
         return None
 
     demographics = {
-        "fhir_patient_id": patient_resource.get('id'), # For later linking
-        "birthDate": patient_resource.get('birthDate'), # String, will be used for age calculation
-        "gender": patient_resource.get('gender'), # String
-        "race_codes": [], # List of OMB race codes
-        "ethnicity_codes": [] # List of OMB ethnicity codes
+        "fhir_patient_id": patient_resource.get('id'),
+        "birthDate": patient_resource.get('birthDate'),
+        "gender": patient_resource.get('gender'), # This is a simple string, not a coding structure
+        "race_codings": [], # List of {"code": ..., "display": ...}
+        "ethnicity_codings": [] # List of {"code": ..., "display": ...}
     }
 
     for ext in patient_resource.get('extension', []):
         if ext.get('url') == US_CORE_RACE_URL:
             for race_ext in ext.get('extension', []):
                 if race_ext.get('url') == 'ombCategory' and 'valueCoding' in race_ext:
-                    demographics["race_codes"].append(race_ext['valueCoding'].get('code'))
+                    value_coding = race_ext['valueCoding']
+                    demographics["race_codings"].append({
+                        "code": value_coding.get('code'),
+                        "display": value_coding.get('display')
+                    })
         elif ext.get('url') == US_CORE_ETHNICITY_URL:
             for eth_ext in ext.get('extension', []):
                 if eth_ext.get('url') == 'ombCategory' and 'valueCoding' in eth_ext:
-                    demographics["ethnicity_codes"].append(eth_ext['valueCoding'].get('code'))
+                    value_coding = eth_ext['valueCoding']
+                    demographics["ethnicity_codings"].append({
+                        "code": value_coding.get('code'),
+                        "display": value_coding.get('display')
+                    })
     return demographics
 
 
 def extract_clinical_events(patient_bundle):
     """Extracts all relevant clinical events with their properties."""
     processed_events = []
-    patient_fhir_id = None # To associate events with the patient
+    patient_fhir_id = None
 
-    # First, find the patient ID
     for entry in patient_bundle.get('entry', []):
         resource = entry.get('resource', {})
         if resource.get('resourceType') == 'Patient':
@@ -168,81 +212,82 @@ def extract_clinical_events(patient_bundle):
         if resource_type in TARGET_EVENT_RESOURCES:
             event_timestamp_dt = get_event_timestamp(resource)
             if not event_timestamp_dt:
-                # print(f"Skipping resource {resource.get('id')} due to missing timestamp.")
-                continue # Skip if no valid timestamp for the event itself
+                continue
 
             event_data = {
-                "event_fhir_id": resource.get('id'), # For later linking/debugging
+                "event_fhir_id": resource.get('id'),
                 "patient_fhir_id": patient_fhir_id,
                 "resourceType": resource_type,
-                "event_timestamp": event_timestamp_dt.isoformat(), # Standard ISO format
-                "year": event_timestamp_dt.year, # For assigning to AnnualSnapshot
-                # Specific fields for each resource type
-                "codes": [], # To store primary codes (SNOMED, LOINC, RXNORM etc.)
-                "status_codes": [],
-                "intent_codes": [], # For MedicationRequest
-                "interpretation_codes": [], # For Observation
+                "event_timestamp": event_timestamp_dt.isoformat(),
+                "year": event_timestamp_dt.year,
+                "primary_codings": [], # Renamed from "codes"
+                "status_codings": [],  # Renamed from "status_codes"
+                "intent_codings": [],  # Renamed from "intent_codes"
+                "interpretation_codings": [], # Renamed from "interpretation_codes"
                 "value_numeric": None,
-                "value_codeable_concept_code": None,
-                "unit_code": None, # UCUM
-                "unit_display": None
+                "value_concept_codings": [], # Now a list
+                "unit_code": None, 
+                "unit_display": None # Human-readable unit string
             }
 
             if resource_type == "Condition":
-                snomed_code = get_first_coding_with_system(resource.get('code'), CODING_SYSTEMS["SNOMED"])
-                if snomed_code: event_data["codes"].append({"system": "SNOMED", "code": snomed_code})
+                codings = get_all_codings_from_concept(resource.get('code'), [CODING_SYSTEMS["SNOMED"]])
+                if codings: event_data["primary_codings"].extend(codings)
 
-                clinical_status_code = get_first_coding_with_system(resource.get('clinicalStatus'), "http://terminology.hl7.org/CodeSystem/condition-clinical")
-                if clinical_status_code: event_data["status_codes"].append({"system": "condition-clinical", "code": clinical_status_code})
+                clinical_status_codings = get_all_codings_from_concept(resource.get('clinicalStatus'), ["http://terminology.hl7.org/CodeSystem/condition-clinical"])
+                if clinical_status_codings: event_data["status_codings"].extend(clinical_status_codings)
 
-                verification_status_code = get_first_coding_with_system(resource.get('verificationStatus'), "http://terminology.hl7.org/CodeSystem/condition-verification")
-                if verification_status_code: event_data["status_codes"].append({"system": "condition-verification", "code": verification_status_code})
-
+                verification_status_codings = get_all_codings_from_concept(resource.get('verificationStatus'), ["http://terminology.hl7.org/CodeSystem/condition-ver-status"]) # Corrected URL from previous attempt
+                if verification_status_codings: event_data["status_codings"].extend(verification_status_codings)
 
             elif resource_type == "Observation":
-                loinc_code = get_first_coding_with_system(resource.get('code'), CODING_SYSTEMS["LOINC"])
-                if loinc_code: event_data["codes"].append({"system": "LOINC", "code": loinc_code})
+                codings = get_all_codings_from_concept(resource.get('code'), [CODING_SYSTEMS["LOINC"]])
+                if codings: event_data["primary_codings"].extend(codings)
 
                 value_info = get_value_from_observation(resource)
-                event_data.update(value_info) # Adds value_numeric, value_codeable_concept_code, unit_code, unit_display
+                event_data["value_numeric"] = value_info.get("value_numeric")
+                # value_info["value_concept_codings"] is already a list
+                if value_info.get("value_concept_codings"):
+                    event_data["value_concept_codings"].extend(value_info["value_concept_codings"])
+                event_data["unit_code"] = value_info.get("unit_code")
+                event_data["unit_display"] = value_info.get("unit_display")
 
-                interp_code = get_interpretation_code(resource)
-                if interp_code: event_data["interpretation_codes"].append(interp_code) # Could be a code or text
+                interp_codings_list = get_interpretation_codings(resource) # Returns a list
+                if interp_codings_list: 
+                    event_data["interpretation_codings"].extend(interp_codings_list)
 
             elif resource_type == "MedicationRequest":
-                rxnorm_code = get_first_coding_with_system(resource.get('medicationCodeableConcept'), CODING_SYSTEMS["RXNORM"])
-                if rxnorm_code: event_data["codes"].append({"system": "RXNORM", "code": rxnorm_code})
-                # Could also check resource.get('medicationReference') if it's a reference
-
+                codings = get_all_codings_from_concept(resource.get('medicationCodeableConcept'), [CODING_SYSTEMS["RXNORM"]])
+                if codings: event_data["primary_codings"].extend(codings)
+                
                 status = resource.get('status')
-                if status: event_data["status_codes"].append({"system": "medicationrequest-status", "code": status}) # FHIR uses string values directly for status
+                # Statuses are single string values, not CodeableConcepts, so append as single structured dict to the list
+                if status: event_data["status_codings"].append({"system": "medicationrequest-status", "code": status, "display": status})
 
                 intent = resource.get('intent')
-                if intent: event_data["intent_codes"].append({"system": "medicationrequest-intent", "code": intent}) # FHIR uses string values directly for intent
+                if intent: event_data["intent_codings"].append({"system": "medicationrequest-intent", "code": intent, "display": intent}) # intent_codings is a list
 
             elif resource_type == "Procedure":
-                # Procedures can have SNOMED, CPT, HCPCS etc. Prioritize SNOMED for now.
-                proc_code = get_first_coding_with_system(resource.get('code'), [CODING_SYSTEMS["SNOMED"], CODING_SYSTEMS["CPT"], CODING_SYSTEMS["HCPCS"]])
-                # You might want to store the system along with the code if it's not always SNOMED
-                if proc_code: event_data["codes"].append({"system": "ProcedureCode", "code": proc_code}) # Generic system name for now
+                codings = get_all_codings_from_concept(resource.get('code'), [CODING_SYSTEMS["SNOMED"], CODING_SYSTEMS["CPT"], CODING_SYSTEMS["HCPCS"]])
+                if codings: event_data["primary_codings"].extend(codings)
 
                 status = resource.get('status')
-                if status: event_data["status_codes"].append({"system": "procedure-status", "code": status})
+                if status: event_data["status_codings"].append({"system": "procedure-status", "code": status, "display": status})
 
             elif resource_type == "Immunization":
-                cvx_code = get_first_coding_with_system(resource.get('vaccineCode'), CODING_SYSTEMS["CVX"])
-                if cvx_code: event_data["codes"].append({"system": "CVX", "code": cvx_code})
+                codings = get_all_codings_from_concept(resource.get('vaccineCode'), [CODING_SYSTEMS["CVX"]])
+                if codings: event_data["primary_codings"].extend(codings)
 
                 status = resource.get('status')
-                if status: event_data["status_codes"].append({"system": "immunization-status", "code": status})
+                if status: event_data["status_codings"].append({"system": "immunization-status", "code": status, "display": status})
 
             elif resource_type == "DiagnosticReport":
                 # Report code, often LOINC
-                report_code = get_first_coding_with_system(resource.get('code'), CODING_SYSTEMS["LOINC"])
-                if report_code: event_data["codes"].append({"system": "LOINC", "code": report_code}) # For report type
+                codings = get_all_codings_from_concept(resource.get('code'), [CODING_SYSTEMS["LOINC"]])
+                if codings: event_data["primary_codings"].extend(codings) 
 
                 status = resource.get('status')
-                if status: event_data["status_codes"].append({"system": "diagnosticreport-status", "code": status})
+                if status: event_data["status_codings"].append({"system": "diagnosticreport-status", "code": status, "display": status})
 
             processed_events.append(event_data)
 
